@@ -1,0 +1,99 @@
+pipeline {
+    agent none  
+
+    tools {
+        maven 'mvn'
+        jdk 'jdk-17'
+    }
+    parameters {
+        choice(
+            name: 'Branch_Name',
+            choices: ['dev', 'master', 'all'],
+            description: 'Select which branch/environment to deploy'
+        )
+    }
+    stages {
+        stage('Parallel Build & Deploy') {
+            parallel {
+                
+                stage('DEV Environment') {
+                    agent { label 'slave1' }  
+                    when {
+                        expression { params.Branch_Name == 'dev' || params.Branch_Name == 'all' }
+                    }
+                    stages {
+                        stage('Checkout DEV') {
+                            steps {
+                                checkout scmGit(
+                                    branches: [[name: 'dev']],
+                                    userRemoteConfigs: [[url: 'https://github.com/varshithakjayappa/simple-java-app.git']]
+                                )
+                            }
+                        }
+                        stage('Build DEV') {
+                            steps {
+                                sh 'mvn clean package'
+                            }
+                        }
+                        stage('Deploy DEV') {
+                            steps {
+                                deploy adapters: [
+                                    tomcat9(
+                                        alternativeDeploymentContext: '',
+                                        credentialsId: 'tomcat-cred',
+                                        path: '',
+                                        url: 'http://3.123.154.68:8081/manager/text'
+                                    )
+                                ],
+                                contextPath: 'hello-1.0',
+                                war: 'target/hello-1.0.war'
+                            }
+                        }
+                    }
+                }
+
+            
+                stage('PROD Environment') {
+                    agent { label 'slave-prod' }
+                    when {
+                        expression { params.Branch_Name == 'master' || params.Branch_Name == 'all' }
+                    }
+                    stages {
+                        stage('Checkout PROD') {
+                            steps {
+                                checkout scmGit(
+                                    branches: [[name: 'master']],
+                                    userRemoteConfigs: [[url: 'https://github.com/varshithakjayappa/simple-java-app.git']]
+                                )
+                            }
+                        }
+                        stage('Build PROD') {
+                            steps {
+                                sh 'mvn clean package'
+                            }
+                        }
+                        stage('Deploy PROD') {
+                            steps {
+                                input message: 'Do you want to deploy to production?', ok: 'Deploy'
+                                deploy adapters: [
+                                    tomcat9(
+                                        alternativeDeploymentContext: '',
+                                        credentialsId: 'tomcat-cred',
+                                        path: '',
+                                        url: 'http://18.184.165.26:8081/manager/text'
+                                    )
+                                ],
+                                contextPath: 'hello-1.0',
+                                war: 'target/hello-1.0.war'
+
+                                slackSend channel: 'all-devops', message: 'Production deployment approved and completed successfully.'
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    
+}
